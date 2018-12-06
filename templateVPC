@@ -1,0 +1,422 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Create a new VPC with 10.XXX.0.0/16 netmask with 2 or 3 Public and Private subnets in 2 or 3 availability zones'
+Metadata:
+  'AWS::CloudFormation::Designer':
+    24a0a132-73d7-499b-8665-c6cbb63eb281:
+      size:
+        width: 850
+        height: 440
+      position:
+        x: 80
+        'y': -40
+      z: 0
+      embeds:
+        - 739a8099-8c34-4b94-a82e-96c9dff773c4
+        - 0337d11c-f0f0-465e-a241-47c78869418e
+    739a8099-8c34-4b94-a82e-96c9dff773c4:
+      size:
+        width: 190
+        height: 350
+      position:
+        x: 140
+        'y': -10
+      z: 1
+      parent: 24a0a132-73d7-499b-8665-c6cbb63eb281
+      embeds: []
+      iscontainedinside:
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+    0337d11c-f0f0-465e-a241-47c78869418e:
+      size:
+        width: 260
+        height: 350
+      position:
+        x: 620
+        'y': -10
+      z: 1
+      parent: 24a0a132-73d7-499b-8665-c6cbb63eb281
+      embeds: []
+      iscontainedinside:
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+
+###############################################################################
+### Parameters
+###############################################################################
+Parameters:
+  AvailabilityZones:
+    Description: 'List of Availability Zones to use for the subnets in the VPC. Note: The logical order is preserved.'
+    Type: List<AWS::EC2::AvailabilityZone::Name>
+  ClassB:
+    Description: 'Class B of VPC (10.XXX.0.0/16)'
+    Type: Number
+    Default: 0
+    ConstraintDescription: 'Must be in the range [0-128]'
+    MinValue: 0
+    MaxValue: 128
+  NumberOfAZ:
+    Description: 'Number of AZ to spread VPC'
+    Type: Number
+    Default: 2
+    ConstraintDescription: 'Must be 2 or 3'
+    MinValue: 2
+    MaxValue: 3
+  Env:
+    Description: 'Environment type'
+    Default: dev
+    ConstraintDescription: 'Must be dev or prod'
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+###############################################################################
+### Conditions
+###############################################################################
+Conditions:
+  isProdMode: !Equals [!Ref 'Env', 'prod']
+  isThreeAZ: !Equals [!Ref 'NumberOfAZ', 3]
+  isProdModeThreeAZ: !And
+    - !Condition isProdMode
+    - !Condition isThreeAZ
+
+###############################################################################
+### Resources
+###############################################################################
+Resources:
+  ##### VPC #####
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Sub '10.${ClassB}.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub '10.${ClassB}.0.0/16'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 24a0a132-73d7-499b-8665-c6cbb63eb281
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '10.${ClassB}.0.0/16 ${Env}'
+
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  ### Nat Gateway
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !Sub '${EIPNatGatewayA.AllocationId}'
+      SubnetId: !Ref SubnetAPublic
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Condition: isProdMode
+    Properties:
+      AllocationId: !Sub '${EIPNatGatewayB.AllocationId}'
+      SubnetId: !Ref SubnetAPublic
+
+  NatGatewayC:
+    Type: AWS::EC2::NatGateway
+    Condition: isProdModeThreeAZ
+    Properties:
+      AllocationId: !Sub '${EIPNatGatewayC.AllocationId}'
+      SubnetId: !Ref SubnetCPublic
+
+  #######################
+  ##### Subnets #########
+  #######################
+
+  ##### public subnets #####
+  PublicSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select 
+        - 0
+        - !Ref AvailabilityZones
+      VpcId: !Ref VPC
+      CidrBlock: !Sub '10.${ClassB}.0.0/21'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'Public A ${Env}'
+        - Key: Context
+          Value: public
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 739a8099-8c34-4b94-a82e-96c9dff773c4
+  PublicSubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.8.0/21'
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Public B ${Env}'
+        - Key: Reach
+          Value: public
+  PublicSubnetC:
+    Type: 'AWS::EC2::Subnet'
+    Condition: isThreeAZ
+    Properties:
+      AvailabilityZone:
+        - 2
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.16.0/21'
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Public B ${Env}'
+        - Key: Reach
+          Value: public
+
+  ##### private subnets #####
+  ## micro services back offices ##
+  PrivateSubnet1A:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.128.0/21'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 1A ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Context
+          Value: Back-Office
+  PrivateSubnet1B:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.136.0/21'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 1B ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Context
+          Value: Back-Office
+  PrivateSubnet1C:
+    Type: 'AWS::EC2::Subnet'
+    Condition: isThreeAZ
+    Properties:
+      AvailabilityZone: !Select
+        - 2
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.144.0/21'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 1C ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Context
+          Value: Back-Office
+
+  ## Other private subnet (ELK, Mender) ##
+  PrivateSubnet2A:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.160.0/21'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 2A ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Context
+          Value: 'ELK, Mender'
+
+  PrivateSubnet2B:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.168.0/21'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 2B ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Context
+          Value: 'ELK, Mender'
+
+  PrivateSubnet2C:
+    Type: 'AWS::EC2::Subnet'
+    Condition: isThreeAZ
+    Properties:
+      AvailabilityZone: !Select
+        - 2
+        - !Ref AvailabilityZones
+      CidrBlock: !Sub '10.${ClassB}.176.0/21'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 2C ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Context
+          Value: 'ELK, Mender'
+
+  ##########################################
+  ##### Routes tables and associations #####
+  ##########################################
+
+  #### Route tables for Public Subnet ####
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Public ${Env}'
+        - Key: Network
+            Value: 'Public'
+
+  PublicRouteTableInternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  PublicRouteTableAssociationPublicSubnetA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicRouteTableAssociationPublicSubnetB:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicRouteTableAssociationPublicSubnetC:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: isThreeAZ
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicRouteTable
+
+  #### Private ####
+  ## Route tables for Private Subnet 1 ##
+  PrivateSubnet1ARouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 1A ${Env}'
+        - Key: Network
+          Value: 'Private'
+  PrivateSubnet1BRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 1B ${Env}'
+        - Key: Network
+          Value: 'Private'
+  PrivateSubnet1CRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: isThreeAZ
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private 1C ${Env}'
+        - Key: Network
+          Value: 'Private'
+
+  PrivateSubnet1ARouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1A
+      RouteTableId: !Ref PrivateSubnet1ARouteTable
+
+  PrivateSubnet1BRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1B
+      RouteTableId: !Ref PrivateSubnet1BRouteTable
+
+  PrivateSubnet1CRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1C
+      RouteTableId: !Ref PrivateSubnet1CRouteTable
+
+  RouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateA
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayA
+
+  ## Private Subnet 2 ##
+  PrivateSubnetA2RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private A2 ${Env}'
+        - Key: Network
+            Value: 'Private'
+  PrivateSubnetB2RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private B2 ${Env}'
+        - Key: Network
+            Value: 'Private'
+  PrivateSubnetC2RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: isThreeAZ
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Private C2 ${Env}'
+        - Key: Network
+            Value: 'Private'
