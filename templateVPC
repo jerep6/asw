@@ -1,53 +1,19 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Create a new VPC with 10.XXX.0.0/16 netmask with 2 or 3 Public and Private subnets in 2 or 3 availability zones'
+Description: 'Create a new VPC with 10.XXX.0.0/16 cidr with one Public and one Private subnet in 2 or 3 availability zones'
 Metadata:
-  'AWS::CloudFormation::Designer':
-    24a0a132-73d7-499b-8665-c6cbb63eb281:
-      size:
-        width: 850
-        height: 440
-      position:
-        x: 80
-        'y': -40
-      z: 0
-      embeds:
-        - 739a8099-8c34-4b94-a82e-96c9dff773c4
-        - 0337d11c-f0f0-465e-a241-47c78869418e
-    739a8099-8c34-4b94-a82e-96c9dff773c4:
-      size:
-        width: 190
-        height: 350
-      position:
-        x: 140
-        'y': -10
-      z: 1
-      parent: 24a0a132-73d7-499b-8665-c6cbb63eb281
-      embeds: []
-      iscontainedinside:
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-    0337d11c-f0f0-465e-a241-47c78869418e:
-      size:
-        width: 260
-        height: 350
-      position:
-        x: 620
-        'y': -10
-      z: 1
-      parent: 24a0a132-73d7-499b-8665-c6cbb63eb281
-      embeds: []
-      iscontainedinside:
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
-        - 24a0a132-73d7-499b-8665-c6cbb63eb281
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: VPC Parameters
+        Parameters:
+          - ClassB
+          - Env
+      - Label:
+          default: Availabity Parameters
+        Parameters:
+          - AvailabilityZones
+          - NumberOfAZ
 
 ###############################################################################
 ### Parameters
@@ -103,17 +69,20 @@ Resources:
       InstanceTenancy: default
       Tags:
         - Key: Name
+          Value: !Sub 'Aviocast VPC ${Env}'
+        - Key: Cidr
           Value: !Sub '10.${ClassB}.0.0/16'
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 24a0a132-73d7-499b-8665-c6cbb63eb281
+        - Key: Project
+          Value: Aviocast
 
   InternetGateway:
     Type: 'AWS::EC2::InternetGateway'
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub '10.${ClassB}.0.0/16 ${Env}'
+          Value: !Sub 'VPC Aviocast ${Env}'
+        - Key: Project
+          Value: Aviocast
 
   VPCGatewayAttachment:
     Type: 'AWS::EC2::VPCGatewayAttachment'
@@ -121,26 +90,58 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  ### Nat Gateway
+  ##### NAT Gateway #####
+  EIPNatGatewayA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  EIPNatGatewayB:
+    Type: AWS::EC2::EIP
+    Condition: isProdMode
+    Properties:
+      Domain: vpc
+
+  EIPNatGatewayC:
+    Type: AWS::EC2::EIP
+    Condition: isProdModeThreeAZ
+    Properties:
+      Domain: vpc
+
   NatGatewayA:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !Sub '${EIPNatGatewayA.AllocationId}'
-      SubnetId: !Ref SubnetAPublic
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub 'Aviocast Public A ${Env}'
+        - Key: Project
+          Value: Aviocast
 
   NatGatewayB:
     Type: AWS::EC2::NatGateway
     Condition: isProdMode
     Properties:
       AllocationId: !Sub '${EIPNatGatewayB.AllocationId}'
-      SubnetId: !Ref SubnetAPublic
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub 'Aviocast Public B ${Env}'
+        - Key: Project
+          Value: Aviocast
 
   NatGatewayC:
     Type: AWS::EC2::NatGateway
     Condition: isProdModeThreeAZ
     Properties:
       AllocationId: !Sub '${EIPNatGatewayC.AllocationId}'
-      SubnetId: !Ref SubnetCPublic
+      SubnetId: !Ref PublicSubnetC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Aviocast Public C ${Env}'
+        - Key: Project
+          Value: Aviocast
 
   #######################
   ##### Subnets #########
@@ -150,7 +151,7 @@ Resources:
   PublicSubnetA:
     Type: 'AWS::EC2::Subnet'
     Properties:
-      AvailabilityZone: !Select 
+      AvailabilityZone: !Select
         - 0
         - !Ref AvailabilityZones
       VpcId: !Ref VPC
@@ -158,12 +159,12 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub 'Public A ${Env}'
-        - Key: Context
-          Value: public
-    Metadata:
-      'AWS::CloudFormation::Designer':
-        id: 739a8099-8c34-4b94-a82e-96c9dff773c4
+          Value: !Sub 'Aviocast Public A ${Env}'
+        - Key: Reach
+          Value: Public
+        - Key: Project
+          Value: Aviocast
+
   PublicSubnetB:
     Type: 'AWS::EC2::Subnet'
     Properties:
@@ -175,9 +176,12 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Public B ${Env}'
+          Value: !Sub 'Aviocast Public B ${Env}'
         - Key: Reach
-          Value: public
+          Value: Public
+        - Key: Project
+          Value: Aviocast
+
   PublicSubnetC:
     Type: 'AWS::EC2::Subnet'
     Condition: isThreeAZ
@@ -190,9 +194,11 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Public B ${Env}'
+          Value: !Sub 'Aviocast Public B ${Env}'
         - Key: Reach
-          Value: public
+          Value: Public
+        - Key: Project
+          Value: Aviocast
 
   ##### private subnets #####
   ## micro services back offices ##
@@ -202,30 +208,32 @@ Resources:
       AvailabilityZone: !Select
         - 0
         - !Ref AvailabilityZones
-      CidrBlock: !Sub '10.${ClassB}.128.0/21'
+      CidrBlock: !Sub '10.${ClassB}.128.0/20'
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private 1A ${Env}'
+          Value: !Sub 'Aviocast Private 1A ${Env}'
         - Key: Reach
           Value: Private
-        - Key: Context
-          Value: Back-Office
+        - Key: Project
+          Value: Aviocast
+
   PrivateSubnet1B:
     Type: 'AWS::EC2::Subnet'
     Properties:
       AvailabilityZone: !Select
         - 1
         - !Ref AvailabilityZones
-      CidrBlock: !Sub '10.${ClassB}.136.0/21'
+      CidrBlock: !Sub '10.${ClassB}.144.0/20'
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private 1B ${Env}'
+          Value: !Sub 'Aviocast Private 1B ${Env}'
         - Key: Reach
           Value: Private
-        - Key: Context
-          Value: Back-Office
+        - Key: Project
+          Value: Aviocast
+
   PrivateSubnet1C:
     Type: 'AWS::EC2::Subnet'
     Condition: isThreeAZ
@@ -233,65 +241,15 @@ Resources:
       AvailabilityZone: !Select
         - 2
         - !Ref AvailabilityZones
-      CidrBlock: !Sub '10.${ClassB}.144.0/21'
+      CidrBlock: !Sub '10.${ClassB}.160.0/20'
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private 1C ${Env}'
+          Value: !Sub 'Aviocast Private 1C ${Env}'
         - Key: Reach
           Value: Private
-        - Key: Context
-          Value: Back-Office
-
-  ## Other private subnet (ELK, Mender) ##
-  PrivateSubnet2A:
-    Type: 'AWS::EC2::Subnet'
-    Properties:
-      AvailabilityZone: !Select
-        - 0
-        - !Ref AvailabilityZones
-      CidrBlock: !Sub '10.${ClassB}.160.0/21'
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub 'Private 2A ${Env}'
-        - Key: Reach
-          Value: Private
-        - Key: Context
-          Value: 'ELK, Mender'
-
-  PrivateSubnet2B:
-    Type: 'AWS::EC2::Subnet'
-    Properties:
-      AvailabilityZone: !Select
-        - 1
-        - !Ref AvailabilityZones
-      CidrBlock: !Sub '10.${ClassB}.168.0/21'
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub 'Private 2B ${Env}'
-        - Key: Reach
-          Value: Private
-        - Key: Context
-          Value: 'ELK, Mender'
-
-  PrivateSubnet2C:
-    Type: 'AWS::EC2::Subnet'
-    Condition: isThreeAZ
-    Properties:
-      AvailabilityZone: !Select
-        - 2
-        - !Ref AvailabilityZones
-      CidrBlock: !Sub '10.${ClassB}.176.0/21'
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub 'Private 2C ${Env}'
-        - Key: Reach
-          Value: Private
-        - Key: Context
-          Value: 'ELK, Mender'
+        - Key: Project
+          Value: Aviocast
 
   ##########################################
   ##### Routes tables and associations #####
@@ -304,11 +262,13 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Public ${Env}'
-        - Key: Network
-            Value: 'Public'
+          Value: !Sub 'Aviocast Public ${Env}'
+        - Key: Reach
+          Value: Public
+        - Key: Project
+          Value: Aviocast
 
-  PublicRouteTableInternetRoute:
+  PublicSubnetInternetGWRoute:
     Type: 'AWS::EC2::Route'
     DependsOn: VPCGatewayAttachment
     Properties:
@@ -336,25 +296,31 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
 
   #### Private ####
-  ## Route tables for Private Subnet 1 ##
+  #Route tables for Private Subnet 1 #
   PrivateSubnet1ARouteTable:
     Type: 'AWS::EC2::RouteTable'
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private 1A ${Env}'
-        - Key: Network
-          Value: 'Private'
+          Value: !Sub 'Aviocast Private 1A ${Env}'
+        - Key: Reach
+          Value: Private
+        - Key: Project
+          Value: Aviocast
+
   PrivateSubnet1BRouteTable:
     Type: 'AWS::EC2::RouteTable'
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private 1B ${Env}'
+          Value: !Sub 'Aviocast Private 1B ${Env}'
         - Key: Network
-          Value: 'Private'
+          Value: Private
+        - Key: Project
+          Value: Aviocast
+
   PrivateSubnet1CRouteTable:
     Type: 'AWS::EC2::RouteTable'
     Condition: isThreeAZ
@@ -362,10 +328,36 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private 1C ${Env}'
+          Value: !Sub 'Aviocast Private 1C ${Env}'
         - Key: Network
-          Value: 'Private'
+          Value: Private
+        - Key: Project
+          Value: Aviocast
 
+  #Route
+  PrivateSubnet1ANatGWRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1ARouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayA
+
+  PrivateSubnet1BNatGWRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1BRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !If [isProdMode, !Ref NatGatewayB, !Ref NatGatewayA]
+
+  PrivateSubnet1CNatGWRoute:
+    Type: AWS::EC2::Route
+    Condition: isThreeAZ
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1CRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !If [isProdMode, !Ref NatGatewayC, !Ref NatGatewayA]
+
+  #Route Associations
   PrivateSubnet1ARouteTableAssociation:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
@@ -380,43 +372,140 @@ Resources:
 
   PrivateSubnet1CRouteTableAssociation:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: isThreeAZ
     Properties:
       SubnetId: !Ref PrivateSubnet1C
       RouteTableId: !Ref PrivateSubnet1CRouteTable
 
-  RouteA:
-    Type: AWS::EC2::Route
+  ## NACL
+  PublicNetworkAcl:
+    Type: 'AWS::EC2::NetworkAcl'
     Properties:
-      RouteTableId: !Ref RouteTablePrivateA
-      DestinationCidrBlock: '0.0.0.0/0'
-      NatGatewayId: !Ref NatGatewayA
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub 'Public ${Env}'
+        - Key: Network
+          Value: Public
+        - Key: Project
+          Value: Aviocast
 
-  ## Private Subnet 2 ##
-  PrivateSubnetA2RouteTable:
-    Type: 'AWS::EC2::RouteTable'
+  PublicSubnetANetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      NetworkAclId: !Ref PublicNetworkAcl
+
+  PrivateNetworkAcl:
+    Type: 'AWS::EC2::NetworkAcl'
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub 'Private A2 ${Env}'
+          Value: !Sub 'Private ${Env}'
         - Key: Network
-            Value: 'Private'
-  PrivateSubnetB2RouteTable:
-    Type: 'AWS::EC2::RouteTable'
+          Value: Private
+        - Key: Project
+          Value: Aviocast
+
+  PrivateSubnet1ANetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
     Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub 'Private B2 ${Env}'
-        - Key: Network
-            Value: 'Private'
-  PrivateSubnetC2RouteTable:
-    Type: 'AWS::EC2::RouteTable'
+      SubnetId: !Ref PrivateSubnet1A
+      NetworkAclId: !Ref PrivateNetworkAcl
+
+  PrivateSubnet1BNetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1B
+      NetworkAclId: !Ref PrivateNetworkAcl
+
+  PrivateSubnet1CNetworkAclAssociation:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
     Condition: isThreeAZ
     Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub 'Private C2 ${Env}'
-        - Key: Network
-            Value: 'Private'
+      SubnetId: !Ref PrivateSubnet1B
+      NetworkAclId: !Ref PrivateNetworkAcl
+
+  ## TODO YCO : These rules will have to be rewritten once testing done. Block all traffic except that which is explicitly required.
+  ## NACL Rules
+  PublicSubnetNaclRuleInboundAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+
+  PublicSubnetNaclRuleOutboundAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
+
+  PrivateSubnetNaclRuleInboundAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PrivateNetworkAcl
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+
+  PrivateSubnetNaclRuleOutboundAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref PrivateNetworkAcl
+      RuleNumber: 100
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
+
+###############################################################################
+### Output
+###############################################################################
+Outputs:
+  AZs:
+    Description: 'AZs'
+    Value: !Ref NumberOfAZ
+    Export:
+      Name: !Sub '${AWS::StackName}-AZs'
+  AZA:
+    Description: 'AZ of A'
+    Value: !Select [0, !Ref AvailabilityZones]
+    Export:
+      Name: !Sub '${AWS::StackName}-AZA'
+  AZB:
+    Description: 'AZ of B'
+    Value: !Select [1, !Ref AvailabilityZones]
+    Export:
+      Name: !Sub '${AWS::StackName}-AZB'
+  AZC:
+    Condition: isThreeAZ
+    Description: 'AZ of C'
+    Value: !Select [2, !Ref AvailabilityZones]
+    Export:
+      Name: !Sub '${AWS::StackName}-AZC'
+  VPC:
+    Description: 'VPC'
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VPC'
+  ClassB:
+    Description: 'VPC CIDR'
+    Value: !Ref ClassB
+    Export:
+      Name: !Sub '${AWS::StackName}-10.${ClassB}.0.0/16'
+  Env:
+    Description: 'Environment'
+    Value: !Ref Env
+    Export:
+      Name: !Sub '${AWS::StackName}-Env'
